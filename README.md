@@ -39,6 +39,32 @@ Guías detalladas en la carpeta `docs/`:
 - **`docs/GUIA-FLUJO-N8N-VOLTAC-VOICE-FORMS.md`** — Crear el flujo en N8N (webhook, Gemini, email).
 - **`docs/GUIA-DESPLIEGUE-VPS-VOLTAC-VOICE-FORMS.md`** — Desplegar la app en el VPS bajo voltac.com.co (DNS en Hostinger, Nginx, SSL, PM2).
 
+## Subir a GitHub y clonar en el VPS
+
+1. **Crear un repositorio en GitHub** (vacío, sin README ni .gitignore):
+   - Ve a [github.com/new](https://github.com/new).
+   - Nombre sugerido: `voltac-voice-forms`.
+   - Visibilidad: Private o Public. No marques "Add a README".
+   - Crear repositorio.
+
+2. **En tu PC** (en la carpeta del proyecto), añade el remote y haz push:
+   ```bash
+   cd c:\Users\mejia\Desktop\VOLTAC_SYSTEMS\Voltac_Voice_Forms
+   git remote add origin https://github.com/TU_USUARIO/voltac-voice-forms.git
+   git branch -M main
+   git push -u origin main
+   ```
+   Sustituye `TU_USUARIO` por tu usuario de GitHub. Si usas SSH: `git@github.com:TU_USUARIO/voltac-voice-forms.git`.
+
+3. **En el VPS**, clona y sigue la guía de despliegue (Paso 4 en adelante):
+   ```bash
+   sudo mkdir -p /var/www
+   cd /var/www
+   sudo git clone https://github.com/TU_USUARIO/voltac-voice-forms.git
+   sudo chown -R $USER:$USER /var/www/voltac-voice-forms
+   cd /var/www/voltac-voice-forms
+   ```
+
 ## Estructura del proyecto
 
 ```
