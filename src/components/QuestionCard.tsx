@@ -41,8 +41,9 @@ export function QuestionCard({
 }: QuestionCardProps) {
   const isDone = status === 'done';
   const effectiveText = (finalText || textFallback).trim();
-  const showNext = isDone && canGoNext;
-  const showRepeat = isDone;
+  const hasTextInput = textFallback.trim().length > 0;
+  const showNext = (isDone || hasTextInput) && canGoNext;
+  const showRepeat = isDone || hasTextInput;
 
   return (
     <div className="w-full max-w-2xl mx-auto px-4">
