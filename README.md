@@ -47,20 +47,29 @@ Guías detalladas en la carpeta `docs/`:
    - Visibilidad: Private o Public. No marques "Add a README".
    - Crear repositorio.
 
-2. **En tu PC** (en la carpeta del proyecto), añade el remote y haz push:
-   ```bash
-   cd c:\Users\mejia\Desktop\VOLTAC_SYSTEMS\Voltac_Voice_Forms
-   git remote add origin https://github.com/TU_USUARIO/voltac-voice-forms.git
-   git branch -M main
-   git push -u origin main
-   ```
-   Sustituye `TU_USUARIO` por tu usuario de GitHub. Si usas SSH: `git@github.com:TU_USUARIO/voltac-voice-forms.git`.
+2. **En tu PC** (en la carpeta del proyecto), conecta con GitHub y sube el código.
+   - **Si ya ejecutaste `git remote add origin` con la URL equivocada**, corrígela así (sustituye `tu-usuario-github` por tu usuario real):
+     ```bash
+     git remote remove origin
+     git remote add origin https://github.com/CMejiaVergel-github/voltac-voice-forms.git
+     ```
+   - **Si es la primera vez**, solo añade el remote (sustituye `tu-usuario-github` por tu usuario de GitHub):
+     ```bash
+     git remote add origin https://github.com/CMejiaVergel-github/voltac-voice-forms.git
+     ```
+   - Luego, en ambos casos:
+     ```bash
+     cd c:\Users\mejia\Desktop\VOLTAC_SYSTEMS\Voltac_Voice_Forms
+     git branch -M main
+     git push -u origin main
+     ```
+   **Ejemplo:** si tu usuario es `juanperez`, la URL es `https://github.com/juanperez/voltac-voice-forms.git`.
 
 3. **En el VPS**, clona y sigue la guía de despliegue (Paso 4 en adelante):
    ```bash
    sudo mkdir -p /var/www
    cd /var/www
-   sudo git clone https://github.com/TU_USUARIO/voltac-voice-forms.git
+   sudo git clone https://github.com/tu-usuario-github/voltac-voice-forms.git
    sudo chown -R $USER:$USER /var/www/voltac-voice-forms
    cd /var/www/voltac-voice-forms
    ```

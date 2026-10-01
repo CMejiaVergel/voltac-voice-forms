@@ -1,154 +1,222 @@
-# Guía paso a paso: Flujo N8N para Voltac Voice Forms
+# Guía paso a paso: Flujo N8N para Voltac Voice Forms (v2 – Groq)
 
-Esta guía detalla cómo crear el flujo en N8N que recibe los datos del formulario de voz, los procesa con Gemini y envía un correo interno al equipo de Voltac.
+Esta guía detalla cómo crear el flujo en N8N que recibe los datos del formulario de voz, los procesa con **Groq** (API de chat compatible con OpenAI) y envía un correo interno al equipo de Voltac.
+
+**Versión 2 (Groq)** – Incluye:
+
+- Uso de **Groq** como proveedor de IA (cuenta gratuita, sin tarjeta; API key en [console.groq.com](https://console.groq.com)).
+- Webhook con **Respond = "Using Respond to Webhook Node"** para evitar "Unused Respond to Webhook node".
+- Uso de **`$json.body.answers`** en Edit Fields (body del POST en `body`).
+- Nodo **Code** que construye el body de la petición a Groq (formato chat completions) con JSON siempre válido.
+- Nodo **Code** que parsea la respuesta de Groq (formato `choices[0].message.content`).
+- Orden: Code (parsear) → Respond to Webhook → Send Email.
 
 **Requisitos previos:**
-- N8N instalado y accesible en tu VPS: **https://n8ndev.voltac.com.co/**
-- Cuenta en [Google AI Studio](https://aistudio.google.com/apikey) para obtener la API key de Gemini
-- Credenciales SMTP (Gmail con contraseña de aplicación, SendGrid, o el servidor de correo que uses)
+
+- N8N instalado y accesible (ej. **https://n8ndev.voltac.com.co/**).
+- **API key de Groq:** regístrate en [console.groq.com](https://console.groq.com), crea una API key y guárdala (no la pegues en la guía; usa variable de entorno `GROQ_API_KEY` en n8n).
+- Credenciales SMTP (Gmail, SendGrid, etc.).
 
 ---
 
-## Resumen del flujo
+## Resumen del flujo (orden de nodos)
 
 ```
-[Webhook] → [Set: consolidar texto] → [HTTP Request: Gemini] → [Code: parsear JSON] → [Respond to Webhook] + [Send Email]
+[Webhook] → [Edit Fields] → [Code: body Groq] → [HTTP Request: Groq] → [Code: parsear JSON] → [Respond to Webhook] → [Send Email]
 ```
 
-El webhook recibirá POST desde la app en **https://voice-forms.voltac.com.co** (o desde localhost en desarrollo). La URL del webhook será:
-
-**`https://n8ndev.voltac.com.co/webhook/voltac-voice-forms`**
-
----
-
-## Paso 1: Crear un nuevo workflow
-
-1. Entra a **https://n8ndev.voltac.com.co/** e inicia sesión.
-2. En la vista principal, haz clic en **"+ Add workflow"** (o **"Nuevo workflow"**).
-3. Asigna un nombre al workflow, por ejemplo: **Voltac Voice Forms – Intake**.
-4. Guarda (Ctrl+S o el botón **Save**).
+- El **Webhook** recibe el POST desde **https://voice-forms.voltac.com.co** (o localhost en desarrollo).
+- URL del webhook: **`https://n8ndev.voltac.com.co/webhook/voltac-voice-forms`**.
 
 ---
 
-## Paso 2: Nodo 1 – Webhook
+## Paso 1: Crear el workflow
 
-1. Haz clic en **"+"** para añadir un nodo (o arrastra desde el panel izquierdo).
-2. Busca **"Webhook"** y selecciónalo.
-3. Configura el nodo así:
+1. Entra a tu instancia de N8N (ej. **https://n8ndev.voltac.com.co/**) e inicia sesión.
+2. **"+ Add workflow"** (o **"Nuevo workflow"**).
+3. Nombre del workflow, por ejemplo: **Voltac Voice Forms – Intake**.
+4. Guarda (Ctrl+S o **Save**).
+
+---
+
+## Paso 2: Nodo Webhook
+
+1. Añade un nodo **Webhook** (busca "Webhook" en el panel de nodos).
+2. Configura:
 
    | Campo | Valor |
    |-------|--------|
    | **HTTP Method** | POST |
    | **Path** | `voltac-voice-forms` |
-   | **Response Mode** | When Last Node Finishes |
+   | **Respond** | **Using Respond to Webhook Node** |
    | **Response Code** | 200 |
 
-4. **Importante:** El path debe ser exactamente `voltac-voice-forms` (sin barras al inicio). La URL final del webhook será la que aparece en el nodo, algo como:
-   `https://n8ndev.voltac.com.co/webhook/voltac-voice-forms`
-5. Guarda el nodo (**Execute Node** no es necesario en webhooks; se activa al recibir la petición).
-6. **Activa el workflow** con el interruptor **"Active"** en la esquina superior derecha. Sin esto, el webhook no responderá.
-
----
-
-## Paso 3: Nodo 2 – Set (consolidar preguntas y respuestas)
-
-Este nodo toma el JSON recibido del webhook y genera un único texto con todas las preguntas y respuestas para enviarlo a Gemini.
-
-1. Añade un nodo después del Webhook (conecta la salida del Webhook a la entrada del nuevo nodo).
-2. Busca **"Set"** (o **"Edit Fields"** en versiones recientes) y añádelo.
-3. Configura:
-   - **Mode:** Manual (o el que permita añadir un campo con expresión).
-   - Añade un campo:
-     - **Name:** `consolidated_text`
-     - **Value:** (usa **Expression** / modo expresión) y pega lo siguiente:
-
-```javascript
-{{ $json.answers.map(a => `PREGUNTA: ${a.questionText}\nRESPUESTA: ${a.transcription}`).join('\n\n---\n\n') }}
-```
-
-4. Así se genera un texto tipo:
-   ```
-   PREGUNTA: ¿Cuál es tu nombre y el de tu empresa?
-   RESPUESTA: Mi nombre es Carlos y tengo TransCargo...
-
-   ---
-
-   PREGUNTA: ¿A qué se dedica tu empresa?
-   RESPUESTA: Logística nacional...
-   ```
+3. **Importante:** El parámetro **Respond** debe ser exactamente **"Using Respond to Webhook Node"**. Si está en "When Last Node Finishes" u otra opción sin indicar el nodo de respuesta, n8n mostrará "Unused Respond to Webhook node found in the workflow" y el webhook fallará.
+4. El path debe ser `voltac-voice-forms` (sin barras al inicio). La URL final será la que muestre el nodo (ej. `https://n8ndev.voltac.com.co/webhook/voltac-voice-forms`).
 5. Guarda el nodo.
 
 ---
 
-## Paso 4: Nodo 3 – HTTP Request (llamar a Gemini)
+## Paso 3: Nodo Edit Fields (consolidar preguntas y respuestas)
 
-1. Añade un nodo después del Set.
-2. Busca **"HTTP Request"** y selecciónalo.
-3. Configura:
+Este nodo toma el JSON del webhook y genera un único texto con todas las preguntas y respuestas para el prompt de IA.
+
+1. Añade un nodo **Edit Fields** (o **Set**) **después del Webhook** y conecta la salida del Webhook a su entrada.
+2. Configura:
+   - **Mode:** Manual (o el que permita añadir un campo con expresión).
+   - Añade un campo:
+     - **Name:** `consolidated_text`
+     - **Value:** usa **Expression** y pega la expresión siguiente.
+
+En n8n 2.8.x (self-hosted) el body del POST suele llegar en `$json.body`, no en `$json` directamente. Usa esta expresión:
+
+```javascript
+{{ $json.body.answers.map(a => `PREGUNTA: ${a.questionText}\nRESPUESTA: ${a.transcription}`).join('\n\n---\n\n') }}
+```
+
+3. Si en tu instalación el webhook entrega el body en la raíz (sin `body`), en **Executions** verás `answers` directamente en el item. En ese caso usa en su lugar:
+
+   `{{ $json.answers.map(a => \`PREGUNTA: ${a.questionText}\nRESPUESTA: ${a.transcription}\`).join('\n\n---\n\n') }}`
+
+4. El resultado será un texto tipo:
+
+   ```
+   PREGUNTA: ¿Cuál es tu nombre y el de tu empresa o negocio?
+   RESPUESTA: Carlos Mejía y trabajo para la empresa voltaje
+
+   ---
+
+   PREGUNTA: ¿A qué se dedica tu empresa?
+   RESPUESTA: mi empresa es del sector eléctrico
+   ```
+
+5. Guarda el nodo.
+
+---
+
+## Paso 4: Nodo Code – Construir body para Groq (JSON válido)
+
+Groq expone una API compatible con OpenAI Chat Completions: `POST https://api.groq.com/openai/v1/chat/completions` con header `Authorization: Bearer <API_KEY>` y body con `model` y `messages`. Para no romper el JSON al insertar el texto del usuario, construimos todo el body en un nodo Code.
+
+1. Añade un nodo **Code** después de **Edit Fields** y conecta la salida de Edit Fields a su entrada.
+2. **Mode:** Run Once for All Items (o equivalente).
+3. **Language:** JavaScript.
+4. Pega el siguiente código. La API key debe venir de la variable de entorno **`GROQ_API_KEY`** (configurada en el stack de n8n en Portainer para todos los servicios, incluido el worker). No escribas la clave real en el código.
+
+```javascript
+const item = $input.first().json;
+const consolidatedText = item.consolidated_text || '';
+
+// Usar variable de entorno GROQ_API_KEY (definida en el stack n8n en Portainer)
+const apiKey = $env.GROQ_API_KEY || '';
+
+const promptText = `Eres un analista de negocios de Voltac, una agencia de inteligencia artificial y automatización. Tu trabajo es analizar las respuestas de un cliente potencial que completó un formulario de diagnóstico y generar un informe estructurado.
+
+A continuación están las respuestas del cliente:
+
+---
+${consolidatedText}
+---
+
+Genera un JSON con exactamente esta estructura (sin markdown, sin backticks, solo el JSON puro):
+
+{
+  "nombre_cliente": "nombre extraído",
+  "empresa": "nombre de la empresa si lo mencionó",
+  "sector": "sector o industria identificada",
+  "problema_principal": "resumen conciso del problema en máximo 2 oraciones",
+  "proceso_actual": "cómo manejan el proceso actualmente",
+  "solucion_sugerida": "tipo de solución que podría ofrecerse: automatización, agente IA, chatbot, flujo automatizado, etc.",
+  "nivel_complejidad": "baja | media | alta",
+  "presupuesto_mencionado": "lo que mencionó o 'No especificado'",
+  "contacto_preferido": "medio de contacto que indicó",
+  "disponibilidad": "disponibilidad para reunión",
+  "notas_adicionales": "cualquier observación relevante que no encaje en los campos anteriores",
+  "resumen_ejecutivo": "párrafo de 3-5 oraciones resumiendo quién es el cliente, qué necesita y qué le podríamos ofrecer"
+}`;
+
+// Formato Groq / OpenAI Chat Completions
+const groqBody = {
+  model: 'llama-3.3-70b-versatile',
+  messages: [
+    {
+      role: 'user',
+      content: promptText
+    }
+  ],
+  temperature: 0.3,
+  max_tokens: 1024
+};
+
+return [{
+  json: {
+    groqBody,
+    apiKey
+  }
+}];
+```
+
+5. **Modelos Groq disponibles (campo `model`):** Puedes cambiar `llama-3.3-70b-versatile` por otro, por ejemplo:
+   - `llama-3.3-70b-versatile` – Llama 3.3 70B (recomendado).
+   - `llama-3.1-8b-instant` – Más rápido, menos capacidad.
+   - `openai/gpt-oss-120b` – GPT-OSS 120B (si está disponible en tu cuenta).
+6. Guarda el nodo. La salida tendrá `groqBody` (objeto para el body del HTTP Request) y `apiKey` (para el header Authorization).
+
+---
+
+## Paso 5: Nodo HTTP Request (llamar a Groq)
+
+La API de Groq es: `POST https://api.groq.com/openai/v1/chat/completions` con header `Authorization: Bearer <API_KEY>` y body en formato Chat Completions (model, messages).
+
+**Conexión correcta (evita "JSON parameter needs to be valid JSON"):** El nodo **HTTP Request** debe recibir la entrada **solo** desde el **Code del Paso 4** (el que construye `groqBody` y `apiKey`). Si el HTTP Request recibe la entrada desde **Edit Fields**, `$json.groqBody` no existirá y el body no será JSON válido. En la ejecución, comprueba que el **Input** del nodo HTTP Request muestre el **Code** (con `groqBody` y `apiKey`), no "Edit Fields". Si ves "Edit Fields", elimina esa conexión y conecta únicamente: **Code (Paso 4) → HTTP Request**.
+
+1. Añade un nodo **HTTP Request** después del **Code** del Paso 4. Conecta **solo** la salida de ese Code a la entrada del HTTP Request (no conectes Edit Fields al HTTP Request).
+2. Configura:
 
    | Campo | Valor |
    |-------|--------|
    | **Method** | POST |
-   | **URL** | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{ $env.GEMINI_API_KEY }}` |
+   | **URL** | `https://api.groq.com/openai/v1/chat/completions` |
 
-   Si en tu N8N las variables de entorno se acceden distinto (p. ej. `$credentials` o un nodo "Credentials"), usa la forma que tengas para inyectar la API key. Lo habitual es tener `GEMINI_API_KEY` en **Settings → Variables** de N8N.
+3. **Headers** – Añade estos dos (uno por uno):
+   - **Name:** `Content-Type` → **Value:** `application/json`
+   - **Name:** `Authorization` → **Value:** `Bearer {{ $json.apiKey }}`
 
-4. **Headers:**
-   - Añade: **Name** `Content-Type`, **Value** `application/json`.
+   Así la clave que devolvió el Code (desde `$env.GROQ_API_KEY`) se envía en el header. Si en tu n8n la variable de entorno no está disponible en el Code, puedes poner en el nodo HTTP Request una credencial de tipo "Header Auth" con el valor `Bearer <tu_clave>` y usarla en lugar de la expresión; lo recomendable es usar `GROQ_API_KEY` en el environment del stack.
 
-5. **Body (Body Content Type: JSON):** pega el siguiente JSON. En el campo del prompt debes **insertar la expresión** que referencia el texto consolidado del nodo anterior. En N8N suele ser algo como `{{ $json.consolidated_text }}` dentro del texto:
+4. **Body:**
+   - **Body Content Type:** JSON.
+   - **Specify Body:** Using JSON (o expresión).
+   - En el campo del body usa **solo** la expresión que devuelve el objeto construido en el Code del Paso 4:
+   - **`{{ $json.groqBody }}`**
 
-```json
-{
-  "contents": [
-    {
-      "parts": [
-        {
-          "text": "Eres un analista de negocios de Voltac, una agencia de inteligencia artificial y automatización. Tu trabajo es analizar las respuestas de un cliente potencial que completó un formulario de diagnóstico y generar un informe estructurado.\n\nA continuación están las respuestas del cliente:\n\n---\n{{ $json.consolidated_text }}\n---\n\nGenera un JSON con exactamente esta estructura (sin markdown, sin backticks, solo el JSON puro):\n\n{\n  \"nombre_cliente\": \"nombre extraído\",\n  \"empresa\": \"nombre de la empresa si lo mencionó\",\n  \"sector\": \"sector o industria identificada\",\n  \"problema_principal\": \"resumen conciso del problema en máximo 2 oraciones\",\n  \"proceso_actual\": \"cómo manejan el proceso actualmente\",\n  \"solucion_sugerida\": \"tipo de solución que podría ofrecerse: automatización, agente IA, chatbot, flujo automatizado, etc.\",\n  \"nivel_complejidad\": \"baja | media | alta\",\n  \"presupuesto_mencionado\": \"lo que mencionó o 'No especificado'\",\n  \"contacto_preferido\": \"medio de contacto que indicó\",\n  \"disponibilidad\": \"disponibilidad para reunión\",\n  \"notas_adicionales\": \"cualquier observación relevante que no encaje en los campos anteriores\",\n  \"resumen_ejecutivo\": \"párrafo de 3-5 oraciones resumiendo quién es el cliente, qué necesita y qué le podríamos ofrecer\"\n}"
-        }
-      ]
-    }
-  ],
-  "generationConfig": {
-    "temperature": 0.3,
-    "maxOutputTokens": 1024
-  }
-}
-```
+   Con esto el body es siempre JSON válido (model, messages, temperature, max_tokens).
 
-6. **Obtener la API key de Gemini:**
-   - Ve a [Google AI Studio – API keys](https://aistudio.google.com/apikey).
-   - Crea una clave y cópiala.
-   - En N8N: **Settings (engranaje) → Variables** (o Variables de entorno del servidor). Crea una variable:
-     - **Name:** `GEMINI_API_KEY`
-     - **Value:** (tu clave, sin espacios).
-   - Reinicia N8N si es necesario para que cargue la variable.
-
-7. Guarda el nodo.
+5. Guarda el nodo.
 
 ---
 
-## Paso 5: Nodo 4 – Code (extraer y parsear el JSON de Gemini)
+## Paso 6: Nodo Code – Extraer y parsear el JSON de Groq
 
-La respuesta de Gemini viene envuelta en un objeto; hay que extraer el texto y parsearlo como JSON.
+La respuesta de Groq usa el formato OpenAI Chat Completions: el texto generado está en `choices[0].message.content`. Este nodo extrae ese texto y lo parsea como JSON.
 
-1. Añade un nodo **"Code"** después del HTTP Request.
-2. **Mode:** Run Once for All Items (o el equivalente en tu versión).
+1. Añade un nodo **Code** después del **HTTP Request** y conecta la salida del HTTP Request a su entrada.
+2. **Mode:** Run Once for All Items.
 3. **Language:** JavaScript.
-4. **Código:**
+4. Código:
 
 ```javascript
-const geminiResponse = $input.first().json;
-const rawText = geminiResponse.candidates[0].content.parts[0].text;
+const groqResponse = $input.first().json;
 
-// Limpiar posibles backticks de markdown
+// Groq/OpenAI format: choices[0].message.content
+const rawText = groqResponse.choices?.[0]?.message?.content || '';
+
 const cleanJson = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 let parsed;
 
 try {
   parsed = JSON.parse(cleanJson);
 } catch (e) {
-  // Si falla el parse, devolver un objeto con las respuestas crudas para el email
   return [{
     json: {
       nombre_cliente: 'Error al parsear',
@@ -161,8 +229,8 @@ try {
       presupuesto_mencionado: '-',
       contacto_preferido: '-',
       disponibilidad: '-',
-      notas_adicionales: 'JSON de Gemini no válido. Revisar flujo.',
-      resumen_ejecutivo: 'Revisar manualmente la respuesta de Gemini.'
+      notas_adicionales: 'JSON de Groq no válido. Revisar flujo.',
+      resumen_ejecutivo: 'Revisar manualmente la respuesta de Groq.'
     }
   }];
 }
@@ -174,15 +242,12 @@ return [{ json: parsed }];
 
 ---
 
-## Paso 6: Nodo 5 – Respond to Webhook (respuesta al frontend)
+## Paso 7: Nodo Respond to Webhook
 
-Para que la app sepa que todo salió bien, el flujo debe responder al webhook.
-
-1. Añade el nodo **"Respond to Webhook"** (a veces dentro de la categoría Webhook).
-2. Conéctalo **después del nodo Code** (usa la misma salida que irá al email).
-3. Configura:
+1. Añade el nodo **Respond to Webhook**. Conéctalo **después del nodo Code** del Paso 6 (el que parsea el JSON).
+2. Configura:
    - **Respond With:** JSON
-   - **Response Body** (JSON):
+   - **Response Body:**
 
 ```json
 {
@@ -191,25 +256,26 @@ Para que la app sepa que todo salió bien, el flujo debe responder al webhook.
 }
 ```
 
-4. **Response Code:** 200.
-5. Guarda el nodo.
+   - **Response Code:** 200
+
+3. Guarda el nodo.
 
 ---
 
-## Paso 7: Nodo 6 – Send Email (enviar diagnóstico al equipo)
+## Paso 8: Nodo Send Email
 
-1. Añade un nodo **"Send Email"** (o **Gmail** si usas Gmail). Conéctalo a la **misma salida del nodo Code** (el Code puede tener dos conexiones: una a Respond to Webhook y otra a Send Email).
-2. Configura las credenciales SMTP (o Gmail) en N8N si aún no lo has hecho.
+1. Añade el nodo **Send Email** (o **Gmail**). Conéctalo **después de Respond to Webhook** (salida del mismo Code del Paso 6): Code (parsear) → Respond to Webhook y Code (parsear) → Send Email.
+2. Configura credenciales SMTP en N8N si aún no lo has hecho.
 3. En el nodo:
 
    | Campo | Valor / Expresión |
    |-------|-------------------|
-   | **To** | El correo donde quieres recibir los leads (ej. `leads@voltac.com.co` o tu correo interno). |
+   | **To** | Correo donde recibir los leads (ej. `leads@voltac.com.co`). |
    | **Subject** | `Nuevo Lead Voltac Voice Forms: {{ $json.nombre_cliente }} - {{ $json.empresa }}` |
    | **Email Type** | HTML |
-   | **Message** | (ver bloque HTML abajo) |
+   | **Message** | (bloque HTML abajo) |
 
-4. **Cuerpo del mensaje (HTML):** pega el siguiente HTML. Las variables `{{ $json.nombre_cliente }}`, etc., son las que devolvió el nodo Code.
+4. Cuerpo del mensaje (HTML) – las variables son las devueltas por el Code del Paso 6:
 
 ```html
 <h2>Nuevo Lead – Voltac Voice Forms</h2>
@@ -271,34 +337,28 @@ Para que la app sepa que todo salió bien, el flujo debe responder al webhook.
 
 ---
 
-## Paso 8: CORS en N8N (imprescindible para el frontend)
+## Paso 9: CORS en N8N
 
-Para que el navegador pueda hacer POST desde **https://voice-forms.voltac.com.co** (o desde localhost) al webhook, N8N debe permitir ese origen.
+Para que el navegador en **https://voice-forms.voltac.com.co** pueda hacer POST al webhook, N8N debe permitir ese origen.
 
-1. **Si N8N corre con Docker:** en el `docker-compose` o en las variables del contenedor, añade:
-   ```env
-   N8N_CORS_ALLOWED_ORIGINS=https://voice-forms.voltac.com.co,http://localhost:3000
-   ```
-   Incluye `http://localhost:3000` solo si quieres probar en local.
-
-2. **Si N8N corre con PM2 o systemd:** en el archivo de entorno (`.env` o el que use tu proceso), añade:
+1. En el stack/contenedor de N8N (ej. Portainer → stack n8n → variables de entorno), añade o edita:
    ```env
    N8N_CORS_ALLOWED_ORIGINS=https://voice-forms.voltac.com.co
    ```
-3. Reinicia N8N después de cambiar CORS.
+   Opcionalmente añade `,http://localhost:3000` si pruebas en local.
+2. Reinicia los servicios de N8N que correspondan para que carguen la variable.
 
 ---
 
-## Paso 9: Activar el workflow y probar
+## Paso 10: Activar el workflow y probar
 
 1. Activa el workflow con el interruptor **Active** (arriba a la derecha).
-2. Copia la **URL del webhook** que muestra el nodo Webhook:  
-   `https://n8ndev.voltac.com.co/webhook/voltac-voice-forms`
-3. En tu proyecto Voltac Voice Forms, en `.env.local`, define:
+2. Copia la **URL del webhook** que muestra el nodo Webhook (ej. `https://n8ndev.voltac.com.co/webhook/voltac-voice-forms`).
+3. En el proyecto Voltac Voice Forms, en `.env.local`:
    ```env
    NEXT_PUBLIC_N8N_WEBHOOK_URL=https://n8ndev.voltac.com.co/webhook/voltac-voice-forms
    ```
-4. Prueba enviando un POST desde la app (completando el formulario) o con una herramienta como Postman/curl con un JSON de ejemplo (estructura `answers` + `metadata` como en el PRD).
+4. Haz build y reinicia la app si cambiaste la URL. Prueba completando el formulario desde la app.
 
 ---
 
@@ -309,7 +369,30 @@ Para que el navegador pueda hacer POST desde **https://voice-forms.voltac.com.co
 | Instancia N8N | https://n8ndev.voltac.com.co/ |
 | Path del webhook | `voltac-voice-forms` |
 | URL completa del webhook | https://n8ndev.voltac.com.co/webhook/voltac-voice-forms |
-| Variable de entorno en frontend | `NEXT_PUBLIC_N8N_WEBHOOK_URL` = URL anterior |
-| CORS en N8N | `https://voice-forms.voltac.com.co` (y opcionalmente `http://localhost:3000`) |
+| Variable en frontend | `NEXT_PUBLIC_N8N_WEBHOOK_URL` = URL anterior |
+| CORS en N8N | `https://voice-forms.voltac.com.co` |
 
-Con esto el flujo N8N para **Voltac Voice Forms** queda listo y alineado con el nombre de la solución y el dominio voltac.com.co.
+---
+
+## API key de Groq (variable de entorno en self-hosted)
+
+1. **Obtener la API key:** Entra a [console.groq.com](https://console.groq.com), inicia sesión y crea una API key (o usa la que ya te dieron). **No la pegues en la documentación ni en el código;** úsala solo en variables de entorno o credenciales.
+2. **En N8N con Docker Swarm (Portainer):** La variable **GROQ_API_KEY** debe estar en el **environment** de **todos** los servicios que ejecutan nodos (n8n_web, n8n_webhook, n8n_worker, etc.). En Portainer → Stacks → n8n → Editor, en la sección `environment:` de cada servicio que corresponda a n8n, añade:
+
+   ```yaml
+   - GROQ_API_KEY=tu_clave_groq_aqui
+   ```
+
+   Sustituye `tu_clave_groq_aqui` por tu API key real (la que ves en [console.groq.com](https://console.groq.com)).
+3. **Reiniciar servicios:** Después de guardar el stack, reinicia todos los servicios del stack n8n para que carguen la nueva variable.
+4. En el nodo **Code** del Paso 4 se usa `$env.GROQ_API_KEY`; el nodo **HTTP Request** del Paso 5 envía esa clave en el header `Authorization: Bearer {{ $json.apiKey }}` (el Code devuelve `apiKey` desde `$env.GROQ_API_KEY`).
+
+**Referencia rápida de la API Groq (para revisar en la documentación oficial):**
+
+- **URL:** `https://api.groq.com/openai/v1/chat/completions`
+- **Método:** POST
+- **Headers:** `Content-Type: application/json`, `Authorization: Bearer <API_KEY>`
+- **Body:** `{ "model": "llama-3.3-70b-versatile", "messages": [ { "role": "user", "content": "..." } ], "temperature": 0.3, "max_tokens": 1024 }`
+- **Respuesta:** Formato OpenAI; el texto en `choices[0].message.content`.
+
+Con esta guía (v2 – Groq) el flujo usa Groq como proveedor de IA y evita los errores de "Unused Respond to Webhook node" y "JSON parameter needs to be valid JSON".

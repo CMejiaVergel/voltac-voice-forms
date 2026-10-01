@@ -94,7 +94,9 @@ Archivo de ejemplo: `.env.local.example`. Copiar a `.env.local` y ajustar la URL
 - **VPS:** Node.js 20, Nginx, Certbot, PM2. Proyecto en `/var/www/voltac-voice-forms`, `npm run build`, `.env.local` con `NEXT_PUBLIC_N8N_WEBHOOK_URL`, `pm2 start`.
 - **N8N CORS:** `N8N_CORS_ALLOWED_ORIGINS=https://voice-forms.voltac.com.co`. Flujo: Webhook → Set → HTTP a Gemini → Code (parsear JSON) → Respond to Webhook + Send Email. Variable `GEMINI_API_KEY`.
 
-Guías paso a paso en **`docs/`**: `GUIA-FLUJO-N8N-VOLTAC-VOICE-FORMS.md` y `GUIA-DESPLIEGUE-VPS-VOLTAC-VOICE-FORMS.md`.
+Guías paso a paso en **`docs/`**:
+- **Despliegue en VPS con Setup Orion + Traefik:** `docs/DESPLIEGUE-VPS-SETUP-ORION-TRAEFIK.md` (orden estricto, sin tocar Traefik).
+- **Flujo N8N (webhook, Gemini, email):** `docs/GUIA-FLUJO-N8N-VOLTAC-VOICE-FORMS.md`.
 
 ---
 
